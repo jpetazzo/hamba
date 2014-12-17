@@ -1,0 +1,30 @@
+#!/bin/sh
+cat >/haproxy.cfg <<EOF
+global
+  daemon
+  maxconn 256
+
+defaults
+  mode tcp
+  timeout connect 5000ms
+  timeout client 50000ms
+  timeout server 50000ms
+
+listen admin
+  bind *:8080
+  stats enable
+
+frontend hamba-in
+  bind *:$1
+  default_backend hamba-out
+
+backend hamba-out
+EOF
+
+shift
+while [ "$1" ]; do
+    echo "  server $1-$2 $1:$2 maxconn 32 " >> /haproxy.cfg
+    shift
+    shift
+done
+exec haproxy -f /haproxy.cfg -d
