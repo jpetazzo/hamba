@@ -1,5 +1,25 @@
 #!/bin/sh
-cat >/haproxy.cfg <<EOF
+set -e
+
+# Let's start a subshell, so that stdout diversion
+# applies only when generating the config file,
+# not when running haproxy.
+(
+# If the first parameter contains a semi-colon,
+# assume that it's addr:port. Otherwise, assume
+# that it's just a port number and put * in front.
+case "$1" in
+    *:*) BIND="$1" ;;
+    *) BIND="*:$1" ;;
+esac
+
+# If the DEBUG environment var is set (to anything)
+# we will write the config file to stdout. Otherwise
+# we will write it to /haproxy.cfg.
+[ "$DEBUG" ] || exec >/haproxy.cfg
+
+# Generate the global section of the config file.
+cat <<EOF
 global
   daemon
   maxconn 256
@@ -10,21 +30,29 @@ defaults
   timeout client 50000ms
   timeout server 50000ms
 
-listen admin
-  bind *:8080
-  stats enable
-
 frontend hamba-in
-  bind *:$1
+  bind $BIND
   default_backend hamba-out
 
 backend hamba-out
 EOF
 
+# Now generate all the backend entries.
 shift
 while [ "$1" ]; do
-    echo "  server $1-$2 $1:$2 maxconn 32 " >> /haproxy.cfg
+    echo "  server $1-$2 $1:$2 maxconn 32 "
     shift
     shift
 done
+
+# If ADMIN is set, enable admin.
+if [ "$ADMIN" ]; then cat <<EOF
+listen admin
+  mode http
+  bind $ADMIN
+  stats enable
+EOF
+fi
+)
+
 exec haproxy -f /haproxy.cfg -d
