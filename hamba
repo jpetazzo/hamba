@@ -40,7 +40,7 @@ EOF
 # Now generate all the backend entries.
 shift
 while [ "$1" ]; do
-    echo "  server $1-$2 $1:$2 maxconn 32 "
+    echo "  server $1-$2 $1:$2 maxconn 32 check "
     shift
     shift
 done
