@@ -1,25 +1,59 @@
 #!/bin/sh
 set -e
 
-# Let's start a subshell, so that stdout diversion
-# applies only when generating the config file,
-# not when running haproxy.
-(
-# If the first parameter contains a semi-colon,
-# assume that it's addr:port. Otherwise, assume
-# that it's just a port number and put * in front.
-case "$1" in
-    *:*) BIND="$1" ;;
-    *) BIND="*:$1" ;;
-esac
+# Reminder: we will use files in $HOME, hence the use of ~
+# to anchor paths everywhere. HOME can be overridden when
+# running this container.
 
-# If the DEBUG environment var is set (to anything)
-# we will write the config file to stdout. Otherwise
-# we will write it to /haproxy.cfg.
-[ "$DEBUG" ] || exec >/haproxy.cfg
+# Wait until haproxy.new exists. When it does, move it to
+# haproxy.cfg and start a new HAProxy instance to replace
+# the existing one. If a PID file is found (indicating that
+# another instance of HAProxy was already running), tell the
+# new HAProxy to terminate the old ones gracefully.
+# Repeat the whole thing forever.
+main () {
+    echo "Starting main loop."
+    while : ; do
+        while ! [ -f ~/haproxy.new ]; do
+            sleep 1
+        done
+        echo "Found haproxy.new."
+        mv ~/haproxy.new ~/haproxy.chk
+        echo "Configuration validation."
+        if haproxy -f ~/haproxy.chk -c; then
+            echo "Configuration validation PASSED."
+            mv ~/haproxy.chk ~/haproxy.cfg
+        else
+            echo "Configuration validation FAILED."
+            echo "Waiting for new configuration."
+            continue
+        fi
+        echo "Starting new HAProxy instance."
+        if [ -f ~/haproxy.pid ]; then
+            echo "Found haproxy.pid."
+            echo "The following PID(s) will be terminated:"
+            cat ~/haproxy.pid
+            PLEASESTOP="-sf $(cat ~/haproxy.pid)"
+        else
+            PLEASESTOP=
+        fi
+        haproxy -f ~/haproxy.cfg -p ~/haproxy.pid -D $PLEASESTOP
+        echo "Started new HAProxy instance."
+    done
+}
 
-# Generate the global section of the config file.
-cat <<EOF
+# Output a valid HAProxy configuration.
+config () {
+    # If the first parameter contains a semi-colon,
+    # assume that it's addr:port. Otherwise, assume
+    # that it's just a port number and put * in front.
+    case "$1" in
+        *:*) BIND="$1" ;;
+        *) BIND="*:$1" ;;
+    esac
+
+    # Generate the global section of the config file.
+    cat <<EOF
 global
   daemon
   maxconn 256
@@ -37,22 +71,69 @@ frontend hamba-in
 backend hamba-out
 EOF
 
-# Now generate all the backend entries.
-shift
-while [ "$1" ]; do
-    echo "  server $1-$2 $1:$2 maxconn 32 "
+    # Now generate all the backend entries.
     shift
-    shift
-done
+    while [ "$1" ]; do
+        echo "  server $1-$2 $1:$2 maxconn 32 "
+        shift
+        shift
+    done
 
-# If ADMIN is set, enable admin.
-if [ "$ADMIN" ]; then cat <<EOF
+    # If ADMIN is set, enable admin.
+    if [ "$ADMIN" ]; then cat <<EOF
 listen admin
   mode http
   bind $ADMIN
   stats enable
 EOF
-fi
-)
+    fi
+}
 
-exec haproxy -f /haproxy.cfg -d
+# Hook to deal with signals correctly.
+stop () {
+    echo "Stopping main loop."
+    # TODO nicely terminate HAProxy
+    exit
+}
+trap stop TERM
+
+case "$1" in
+debugconfig)
+    shift
+    config "$@"
+    ;;
+reconfigure)
+    shift
+    config "$@" >~/haproxy.new
+    ;;
+run)
+    shift
+    if [ -n "$1" ]; then
+        echo "Initial HAProxy configuration was provided."
+        config "$@" >~/haproxy.new
+    else
+        echo "Initial HAProxy configuration was NOT provided."
+        echo "HAProxy will not be started until one is created."
+    fi
+    main
+    ;;
+showconfig)
+    cat ~/haproxy.cfg
+    ;;
+"")
+    echo "Must specify at least one parameter:"
+    echo "  hamba <debugconfig> <configuration...>"
+    echo "  hamba <reconfigure> <configuration...>"
+    echo "  hamba <run> [configuration...]"
+    echo "  hamba <showconfig>"
+    echo "  hamba <configuration...>"
+    echo "Configuration is:"
+    echo "  [frontendaddr:]<frontendport> [backendaddr backendport] [...]"
+    ;;
+*)
+    # Fallback to old behavior where config is the sole argument.
+    config "$@" >~/haproxy.new
+    main
+    ;;
+esac
+

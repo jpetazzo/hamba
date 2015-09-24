@@ -1,5 +1,6 @@
-FROM ubuntu:14.04
-RUN apt-get update -q
-RUN apt-get install -qy haproxy
+FROM alpine
+RUN apk update && apk add haproxy
 ADD hamba /usr/local/bin/hamba
+ENV HOME /run
+VOLUME /run
 ENTRYPOINT ["hamba"]
