@@ -5,6 +5,18 @@ set -e
 # to anchor paths everywhere. HOME can be overridden when
 # running this container.
 
+# This is a workaround for systems that don't break the
+# container command line into separate arguments.
+# If the first argument passed to hamba contains a space,
+# we will re-execute ourselves to fix the problem.
+case "$1" in
+*\ *)
+    echo "First command-line argument contains a space."
+    echo "Re-execing ourselves to work around the issue."
+    exec $0 $*
+    ;;
+esac
+
 # Wait until haproxy.new exists. When it does, move it to
 # haproxy.cfg and start a new HAProxy instance to replace
 # the existing one. If a PID file is found (indicating that
