@@ -86,9 +86,21 @@ EOF
     # Now generate all the backend entries.
     shift
     while [ "$1" ]; do
-        echo "  server $1-$2 $1:$2 maxconn 32 check"
-        shift
-        shift
+        # If the backend contains a semi-colon,
+        # assume that it's addr:port. Otherwise,
+        # assume that the backend address and port
+        # are given by two separate parameters.
+        case "$1" in
+        *:*)
+            echo "  server $(echo $1 | tr : -) $1 maxconn 32 check"
+            shift
+            ;;
+        *)
+            echo "  server $1-$2 $1:$2 maxconn 32 check"
+            shift
+            shift
+            ;;
+        esac
     done
 
     # If ADMIN is set, enable admin.
@@ -141,6 +153,7 @@ showconfig)
     echo "  hamba <configuration...>"
     echo "Configuration is:"
     echo "  [frontendaddr:]<frontendport> [backendaddr backendport] [...]"
+    echo "  [frontendaddr:]<frontendport> [backendaddr:backendport] [...]"
     ;;
 *)
     # Fallback to old behavior where config is the sole argument.
