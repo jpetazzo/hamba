@@ -128,7 +128,13 @@ debugconfig)
     ;;
 reconfigure)
     shift
-    config "$@" >~/haproxy.new
+    config "$@" >~/haproxy.tmp
+    if ! haproxy -f ~/haproxy.tmp -c; then
+        echo -n "WARNING: there were validation errors. "
+        echo -n "Continuing anyway, but the load balancer "
+        echo "will probably not be reconfigured."
+    fi
+    mv ~/haproxy.tmp ~/haproxy.new
     ;;
 run)
     shift
