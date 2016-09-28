@@ -56,7 +56,7 @@ main () {
 
 # Output a valid HAProxy configuration.
 config () {
-    # If the first parameter contains a semi-colon,
+    # If the first parameter contains a colon,
     # assume that it's addr:port. Otherwise, assume
     # that it's just a port number and put * in front.
     case "$1" in
@@ -86,7 +86,7 @@ EOF
     # Now generate all the backend entries.
     shift
     while [ "$1" ]; do
-        # If the backend contains a semi-colon,
+        # If the backend contains a colon,
         # assume that it's addr:port. Otherwise,
         # assume that the backend address and port
         # are given by two separate parameters.
